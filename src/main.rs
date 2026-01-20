@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::{
+    env::{self, args},
+    io::{self, Write},
+};
 
 use crate::{
     redis_client::{RedisAddress, RedisClient},
@@ -10,10 +13,25 @@ mod redis_client;
 mod redis_type;
 
 fn main() -> anyhow::Result<()> {
-    let redis_address = RedisAddress {
-        host: "192.168.10.2".to_string(),
-        port: 6379,
-        hello: Hello::no_auth(),
+    // parse command line arguments
+    let mut args = env::args();
+    let redis_address = if args.len() == 2 {
+        RedisAddress::new(&args.nth(1).unwrap(), 6379, Hello::no_auth())
+    } else if args.len() == 3 {
+        RedisAddress::new(
+            &args.nth(1).unwrap(),
+            args.nth(2).unwrap().parse()?,
+            Hello::no_auth(),
+        )
+    } else if args.len() == 4 {
+        RedisAddress::new(
+            &args.nth(1).unwrap(),
+            args.nth(2).unwrap().parse()?,
+            Hello::with_password("default".to_string(), args.nth(3).unwrap()),
+        )
+    } else {
+        println!("./rredis-cli.exe usage: ./rredis-cli.exe host [port [password]]");
+        return Ok(());
     };
 
     // create client

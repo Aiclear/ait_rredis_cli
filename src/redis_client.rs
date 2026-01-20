@@ -16,11 +16,11 @@ const BUFFER_SIZE: usize = 4 * 1024 * 1024;
 /// redis server address
 pub struct RedisAddress {
     /// server host
-    pub(crate) host: String,
+    host: String,
     /// server port
-    pub(crate) port: u16,
+    port: u16,
     /// auth client basic info
-    pub(crate) hello: Hello,
+    hello: Hello,
 }
 
 impl RedisAddress {

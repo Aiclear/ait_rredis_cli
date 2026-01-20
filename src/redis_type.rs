@@ -43,6 +43,14 @@ impl Hello {
         }
     }
 
+    pub fn with_password(username: String, password: String) -> Hello {
+        Hello {
+            username: Some(username),
+            password: Some(password),
+            client_name: "rredis_cli".to_string(),
+        }
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         // hello proto_ver [auth username password setname client_name]
         let mut hello_v = vec![];
