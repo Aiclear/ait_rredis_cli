@@ -21,20 +21,21 @@ impl BytesBuffer {
         }
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+    pub fn as_recv_mut_slice(&mut self) -> &mut [u8] {
         &mut self.bytes[self.r_pos..self.capacity]
     }
 
-    pub fn as_read_slice(&mut self) -> &[u8] {
-        &self.bytes[self.r_pos..self.w_pos]
+    pub fn as_send_slice(&mut self) -> &[u8] {
+        let send_buf = &self.bytes[self.r_pos..self.w_pos];
+
+        // write all reset
+        self.r_pos = 0;
+        self.w_pos = 0;
+        send_buf
     }
 
-    pub fn r_position(&mut self, position: usize) {
-        self.r_pos = position;
-    }
-
-    pub fn write_bcount(&mut self, bcount: usize) {
-        self.w_pos += bcount;
+    pub fn w_pos_forward(&mut self, length: usize) {
+        self.w_pos += length;
     }
 
     pub fn mark(&mut self) {

@@ -45,15 +45,15 @@ struct XTcpStream(TcpStream);
 
 impl XTcpStream {
     fn read(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
-        let count = self.0.read(buffer.as_mut_slice())?;
-        buffer.r_position(0);
-        buffer.write_bcount(count);
+        // write bytes to buffer we should add w_pos
+        let count = self.0.read(buffer.as_recv_mut_slice())?;
+        buffer.w_pos_forward(count);
 
         Ok(())
     }
 
     fn write(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
-        self.0.write_all(buffer.as_read_slice())?;
+        self.0.write_all(buffer.as_send_slice())?;
         self.0.flush()?;
 
         Ok(())
@@ -87,6 +87,7 @@ impl RedisClient {
             return Err(anyhow!("connect failed"));
         } else {
             // print handshake resp
+            println!("Connected successfully!");
             println!("{result}");
         }
 
