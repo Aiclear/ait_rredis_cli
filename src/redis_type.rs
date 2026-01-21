@@ -337,10 +337,6 @@ impl Map {
             map.insert(OrderKey(i, key), value);
         }
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
         Map { map }
     }
 }
@@ -363,10 +359,6 @@ impl Set {
         for i in 0..noe {
             value.insert(OrderKey(i, RespType::decode(buff)));
         }
-
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
 
         Set { value }
     }
@@ -395,10 +387,6 @@ impl Array {
             value.push(RespType::decode(buff));
         }
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
         Array { value }
     }
 
@@ -410,7 +398,6 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
-        buff.put_u8_slice(&TERMINATOR[..]);
     }
 }
 
