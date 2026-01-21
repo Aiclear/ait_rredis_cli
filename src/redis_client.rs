@@ -51,6 +51,13 @@ impl XTcpStream {
 
         Ok(())
     }
+
+    fn write(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
+        self.0.write_all(buffer.as_read_slice())?;
+        self.0.flush()?;
+
+        Ok(())
+    }
 }
 
 pub struct RedisClient {
@@ -84,7 +91,13 @@ impl RedisClient {
     }
 
     pub fn write_command(&mut self, resp_type: RespType) -> anyhow::Result<()> {
-        Ok(resp_type.encode(&mut self.buffer))
+        // encode command
+        resp_type.encode(&mut self.buffer);
+
+        // flush buffer
+        self.xstream.write(&mut self.buffer)?;
+
+        Ok(())
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {

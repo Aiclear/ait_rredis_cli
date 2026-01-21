@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
         )
     } else {
         println!("./rredis-cli.exe usage: ./rredis-cli.exe host [port [password]]");
-        return Ok(());
+        RedisAddress::new("192.168.10.2", 6379, Hello::no_auth())
     };
 
     // create client

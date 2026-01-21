@@ -25,6 +25,10 @@ impl BytesBuffer {
         &mut self.bytes[self.r_pos..self.capacity]
     }
 
+    pub fn as_read_slice(&mut self) -> &[u8] {
+        &self.bytes[self.r_pos..self.w_pos]
+    }
+
     pub fn r_position(&mut self, position: usize) {
         self.r_pos = position;
     }
