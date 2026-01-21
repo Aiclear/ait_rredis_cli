@@ -43,10 +43,10 @@ impl Hello {
         }
     }
 
-    pub fn with_password(username: String, password: String) -> Hello {
+    pub fn with_password(username: &str, password: &str) -> Hello {
         Hello {
-            username: Some(username),
-            password: Some(password),
+            username: Some(username.to_string()),
+            password: Some(password.to_string()),
             client_name: "rredis_cli".to_string(),
         }
     }
@@ -122,12 +122,12 @@ impl RespType {
     /// build a RespType from command line input
     /// like `set hello world` => Array([SimpleString("set"), BulkString("hello"), BulkString("world")])
     pub fn create_from_command_line(value: &str) -> RespType {
-        let vecs: Vec<RespType> = value
+        let arrays: Vec<RespType> = value
             .split(" ")
             .map(|t| RespType::BulkStrings(BulkString::new(t.to_string())))
             .collect();
 
-        RespType::Arrays(Array::new(vecs))
+        RespType::Arrays(Array::new(arrays))
     }
 
     pub fn encode(&self, buff: &mut BytesBuffer) {

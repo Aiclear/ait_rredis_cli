@@ -85,6 +85,9 @@ impl RedisClient {
             // Print error message
             eprintln!("Error: {}", result);
             return Err(anyhow!("connect failed"));
+        } else {
+            // print handshake resp
+            println!("{result}");
         }
 
         Ok(client)

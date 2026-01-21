@@ -1,7 +1,9 @@
 use std::{
-    env::{self, args},
+    env::{self},
     io::{self, Write},
 };
+
+use anyhow::Ok;
 
 use crate::{
     redis_client::{RedisAddress, RedisClient},
@@ -23,11 +25,11 @@ fn main() -> anyhow::Result<()> {
         RedisAddress::new(
             &args[1],
             args[2].parse()?,
-            Hello::with_password("default".to_string(), args[3].clone()),
+            Hello::with_password("default", &args[3]),
         )
     } else {
         println!("./rredis-cli.exe usage: ./rredis-cli.exe host [port [password]]");
-        RedisAddress::new("192.168.10.2", 6379, Hello::no_auth())
+        return Ok(());
     };
 
     // create client
