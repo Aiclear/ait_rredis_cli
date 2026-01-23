@@ -73,6 +73,19 @@ impl BytesBuffer {
         self.w_pos - self.r_pos
     }
 
+    pub fn skip_to_end(&mut self) {
+        // Skip to the end of the buffer
+        // This is used to skip error data
+        self.r_pos = self.w_pos;
+    }
+
+    pub fn clear(&mut self) {
+        // Clear the buffer
+        self.r_pos = 0;
+        self.w_pos = 0;
+        self.mark = None;
+    }
+
     fn slice(&self, offset: usize, length: usize) -> &[u8] {
         &self.bytes[offset..offset + length]
     }
