@@ -101,21 +101,25 @@ pub enum RespType {
 }
 
 impl RespType {
-    pub fn decode(buff: &mut BytesBuffer) -> RespType {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<RespType> {
+        if !buff.has_remaining() {
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
         let byte = buff.get_u8();
         match byte {
-            SimpleString::PLUS => RespType::SimpleStrings(SimpleString::decode(buff)),
-            BulkString::DOLLAR => RespType::BulkStrings(BulkString::decode(buff)),
-            Integer::COLON => RespType::Integers(Integer::decode(buff)),
-            Boolean::OCTOTHORPE => RespType::Booleans(Boolean::decode(buff)),
-            Null::UNDERSCORE => RespType::Nulls(Null::decode(buff)),
-            Map::PERCENT => RespType::Maps(Map::decode(buff)),
-            Set::TIDLE => RespType::Sets(Set::decode(buff)),
-            Array::STAR => RespType::Arrays(Array::decode(buff)),
-            SimpleError::MINUS => RespType::SimpleErrors(SimpleError::decode(buff)),
-            BulkError::EXCLAMATION => RespType::BulkErrors(BulkError::decode(buff)),
+            SimpleString::PLUS => Ok(RespType::SimpleStrings(SimpleString::decode(buff)?)),
+            BulkString::DOLLAR => Ok(RespType::BulkStrings(BulkString::decode(buff)?)),
+            Integer::COLON => Ok(RespType::Integers(Integer::decode(buff)?)),
+            Boolean::OCTOTHORPE => Ok(RespType::Booleans(Boolean::decode(buff)?)),
+            Null::UNDERSCORE => Ok(RespType::Nulls(Null::decode(buff)?)),
+            Map::PERCENT => Ok(RespType::Maps(Map::decode(buff)?)),
+            Set::TIDLE => Ok(RespType::Sets(Set::decode(buff)?)),
+            Array::STAR => Ok(RespType::Arrays(Array::decode(buff)?)),
+            SimpleError::MINUS => Ok(RespType::SimpleErrors(SimpleError::decode(buff)?)),
+            BulkError::EXCLAMATION => Ok(RespType::BulkErrors(BulkError::decode(buff)?)),
 
-            _ => panic!("Invalid resp type"),
+            _ => Err(anyhow::anyhow!("Invalid resp type")),
         }
     }
 
@@ -194,11 +198,16 @@ pub struct SimpleString {
 impl SimpleString {
     const PLUS: u8 = b'+';
 
-    pub fn decode(buff: &mut BytesBuffer) -> SimpleString {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<SimpleString> {
         let string_bytes = buff.get_slice_until(TERMINATOR);
-        SimpleString {
-            value: String::from_utf8_lossy(string_bytes).to_string(),
+        if string_bytes.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
         }
+        
+        Ok(SimpleString {
+            value: String::from_utf8_lossy(string_bytes).to_string(),
+        })
     }
 }
 
@@ -214,20 +223,31 @@ impl BulkString {
         BulkString { value }
     }
 
-    pub fn decode(buff: &mut BytesBuffer) -> BulkString {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<BulkString> {
         // length
-        let bytes_length = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
+        let length_slice = buff.get_slice_until(TERMINATOR);
+        if length_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let bytes_length = String::from_utf8_lossy(length_slice)
             .parse::<usize>()
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid length"))?;
 
         // read data
+        if buff.remaining() < bytes_length + 2 {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
         let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
 
         // terminator
         buff.get_u8();
         buff.get_u8();
 
-        BulkString { value }
+        Ok(BulkString { value })
     }
 
     pub fn encode(&self, buff: &mut BytesBuffer) {
@@ -246,11 +266,18 @@ pub struct Integer {
 impl Integer {
     const COLON: u8 = b':';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Integer {
-        let digits = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR));
-        Integer {
-            value: digits.parse::<isize>().unwrap(),
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Integer> {
+        let digits = buff.get_slice_until(TERMINATOR);
+        if digits.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
         }
+        
+        let value = String::from_utf8_lossy(digits)
+            .parse::<isize>()
+            .map_err(|_| anyhow::anyhow!("Invalid integer"))?;
+        
+        Ok(Integer { value })
     }
 }
 
@@ -261,7 +288,12 @@ pub struct Boolean {
 impl Boolean {
     const OCTOTHORPE: u8 = b'#';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Boolean {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Boolean> {
+        if buff.remaining() < 3 {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
         let b_byte = buff.get_u8();
 
         // terminal
@@ -269,7 +301,7 @@ impl Boolean {
         buff.get_u8();
 
         let value = if b't' == b_byte { true } else { false };
-        Boolean { value }
+        Ok(Boolean { value })
     }
 }
 
@@ -278,12 +310,17 @@ pub struct Null;
 impl Null {
     const UNDERSCORE: u8 = b'_';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Null {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Null> {
+        if buff.remaining() < 2 {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
         // terminal
         buff.get_u8();
         buff.get_u8();
 
-        Null
+        Ok(Null)
     }
 }
 
@@ -322,26 +359,28 @@ pub struct Map {
 impl Map {
     const PERCENT: u8 = b'%';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Map {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Map> {
         // length number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
+        let noe_slice = buff.get_slice_until(TERMINATOR);
+        if noe_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let noe = String::from_utf8_lossy(noe_slice)
             .parse::<usize>()
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid map size"))?;
 
         let mut map = BTreeMap::new();
         // read terminal
         for i in 0..noe {
-            let key = RespType::decode(buff);
-            let value = RespType::decode(buff);
+            let key = RespType::decode(buff)?;
+            let value = RespType::decode(buff)?;
 
             map.insert(OrderKey(i, key), value);
         }
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Map { map }
+        Ok(Map { map })
     }
 }
 
@@ -352,23 +391,25 @@ pub struct Set {
 impl Set {
     const TIDLE: u8 = b'~';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Set {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Set> {
         // number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
+        let noe_slice = buff.get_slice_until(TERMINATOR);
+        if noe_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let noe = String::from_utf8_lossy(noe_slice)
             .parse::<usize>()
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid set size"))?;
 
         let mut value = HashSet::with_capacity(noe);
         // read elements
         for i in 0..noe {
-            value.insert(OrderKey(i, RespType::decode(buff)));
+            value.insert(OrderKey(i, RespType::decode(buff)?));
         }
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Set { value }
+        Ok(Set { value })
     }
 }
 
@@ -383,23 +424,25 @@ impl Array {
         Array { value }
     }
 
-    pub fn decode(buff: &mut BytesBuffer) -> Array {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<Array> {
         // number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
+        let noe_slice = buff.get_slice_until(TERMINATOR);
+        if noe_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let noe = String::from_utf8_lossy(noe_slice)
             .parse::<usize>()
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid array size"))?;
 
         let mut value = Vec::with_capacity(noe);
         // read terminal
         for _ in 0..noe {
-            value.push(RespType::decode(buff));
+            value.push(RespType::decode(buff)?);
         }
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Array { value }
+        Ok(Array { value })
     }
 
     pub fn encode(&self, buff: &mut BytesBuffer) {
@@ -410,7 +453,6 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
-        buff.put_u8_slice(&TERMINATOR[..]);
     }
 }
 
@@ -421,9 +463,15 @@ pub struct SimpleError {
 impl SimpleError {
     const MINUS: u8 = b'-';
 
-    pub fn decode(buff: &mut BytesBuffer) -> SimpleError {
-        let value = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR)).to_string();
-        SimpleError { value }
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<SimpleError> {
+        let value_slice = buff.get_slice_until(TERMINATOR);
+        if value_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let value = String::from_utf8_lossy(value_slice).to_string();
+        Ok(SimpleError { value })
     }
 }
 
@@ -434,19 +482,30 @@ pub struct BulkError {
 impl BulkError {
     const EXCLAMATION: u8 = b'!';
 
-    pub fn decode(buff: &mut BytesBuffer) -> BulkError {
+    pub fn decode(buff: &mut BytesBuffer) -> anyhow::Result<BulkError> {
         // length
-        let bytes_length = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
+        let length_slice = buff.get_slice_until(TERMINATOR);
+        if length_slice.is_empty() {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
+        let bytes_length = String::from_utf8_lossy(length_slice)
             .parse::<usize>()
-            .unwrap();
+            .map_err(|_| anyhow::anyhow!("Invalid length"))?;
 
         // read data
+        if buff.remaining() < bytes_length + 2 {
+            buff.reset();
+            return Err(anyhow::anyhow!("Insufficient data"));
+        }
+        
         let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
 
         // terminator
         buff.get_u8();
         buff.get_u8();
 
-        BulkError { value }
+        Ok(BulkError { value })
     }
 }

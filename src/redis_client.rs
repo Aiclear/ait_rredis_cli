@@ -105,7 +105,15 @@ impl RedisClient {
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
-        self.xstream.read(&mut self.buffer)?;
-        Ok(RespType::decode(&mut self.buffer))
+        loop {
+            match RespType::decode(&mut self.buffer) {
+                Ok(resp) => return Ok(resp),
+                Err(e) if e.to_string() == "Insufficient data" => {
+                    // Read more data
+                    self.xstream.read(&mut self.buffer)?;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 }

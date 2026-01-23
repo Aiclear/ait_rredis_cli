@@ -69,6 +69,10 @@ impl BytesBuffer {
         self.r_pos < self.w_pos
     }
 
+    pub fn remaining(&self) -> usize {
+        self.w_pos - self.r_pos
+    }
+
     fn slice(&self, offset: usize, length: usize) -> &[u8] {
         &self.bytes[offset..offset + length]
     }
