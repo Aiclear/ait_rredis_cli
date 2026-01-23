@@ -44,12 +44,12 @@ impl RedisAddress {
 struct XTcpStream(TcpStream);
 
 impl XTcpStream {
-    fn read(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
+    fn read(&mut self, buffer: &mut BytesBuffer) -> io::Result<usize> {
         // write bytes to buffer we should add w_pos
         let count = self.0.read(buffer.as_recv_mut_slice())?;
         buffer.w_pos_forward(count);
 
-        Ok(())
+        Ok(count)
     }
 
     fn write(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
@@ -95,6 +95,9 @@ impl RedisClient {
     }
 
     pub fn write_command(&mut self, resp_type: RespType) -> anyhow::Result<()> {
+        // Clear buffer before encoding command to avoid old data interference
+        self.buffer.clear();
+        
         // encode command
         resp_type.encode(&mut self.buffer);
 
@@ -105,7 +108,31 @@ impl RedisClient {
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
-        self.xstream.read(&mut self.buffer)?;
-        Ok(RespType::decode(&mut self.buffer))
+        let mut attempt_count = 0;
+        let max_attempts = 10;
+        
+        loop {
+            // Try to decode first if there's any data in buffer
+            if let Some(resp) = RespType::decode(&mut self.buffer) {
+                return Ok(resp);
+            }
+            
+            // If we've tried multiple times and still can't decode, skip the data
+            attempt_count += 1;
+            if attempt_count >= max_attempts {
+                // Skip the error data and start fresh
+                self.buffer.skip_to_end();
+                attempt_count = 0;
+            }
+            
+            // Read data into buffer
+            // This will block until data is available or connection is closed
+            let bytes_read = self.xstream.read(&mut self.buffer)?;
+            
+            // If no bytes were read, connection is closed
+            if bytes_read == 0 {
+                return Err(anyhow!("Connection closed by server"));
+            }
+        }
     }
 }
