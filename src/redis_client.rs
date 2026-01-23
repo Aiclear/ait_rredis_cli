@@ -105,7 +105,27 @@ impl RedisClient {
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
+        // Read until we have complete data
+        while self.buffer.has_remaining() {
+            self.buffer.mark();
+            
+            // Try to decode
+            if let Ok(resp) = self.try_decode() {
+                return Ok(resp);
+            } else {
+                // Decode failed, reset position
+                self.buffer.reset();
+                // Read more data
+                self.xstream.read(&mut self.buffer)?;
+            }
+        }
+        
+        // No data, read first
         self.xstream.read(&mut self.buffer)?;
+        self.read_resp()
+    }
+    
+    fn try_decode(&mut self) -> anyhow::Result<RespType> {
         Ok(RespType::decode(&mut self.buffer))
     }
 }

@@ -84,23 +84,25 @@ impl BytesBuffer {
         self.mark();
 
         let old_pos = self.r_pos;
-        let mut bytes_count = 0;
         let mut terminator_state = 0;
 
         while self.has_remaining() {
             let byte = self.get_u8();
             if until[terminator_state] == byte {
                 terminator_state += 1;
+                if terminator_state == until.len() {
+                    // Found complete terminator
+                    let length = self.r_pos - old_pos - until.len();
+                    return self.slice(old_pos, length);
+                }
             } else {
                 terminator_state = 0;
-                bytes_count += 1;
-            }
-
-            if terminator_state == until.len() {
-                break;
             }
         }
 
-        self.slice(old_pos, bytes_count)
+        // No complete terminator found, reset position
+        self.reset();
+        // Return empty slice to indicate no complete data
+        self.slice(old_pos, 0)
     }
 }
