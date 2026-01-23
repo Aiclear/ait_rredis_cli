@@ -101,21 +101,87 @@ pub enum RespType {
 }
 
 impl RespType {
-    pub fn decode(buff: &mut BytesBuffer) -> RespType {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<RespType> {
+        if !buff.has_remaining() {
+            return None;
+        }
+        
         let byte = buff.get_u8();
         match byte {
-            SimpleString::PLUS => RespType::SimpleStrings(SimpleString::decode(buff)),
-            BulkString::DOLLAR => RespType::BulkStrings(BulkString::decode(buff)),
-            Integer::COLON => RespType::Integers(Integer::decode(buff)),
-            Boolean::OCTOTHORPE => RespType::Booleans(Boolean::decode(buff)),
-            Null::UNDERSCORE => RespType::Nulls(Null::decode(buff)),
-            Map::PERCENT => RespType::Maps(Map::decode(buff)),
-            Set::TIDLE => RespType::Sets(Set::decode(buff)),
-            Array::STAR => RespType::Arrays(Array::decode(buff)),
-            SimpleError::MINUS => RespType::SimpleErrors(SimpleError::decode(buff)),
-            BulkError::EXCLAMATION => RespType::BulkErrors(BulkError::decode(buff)),
-
-            _ => panic!("Invalid resp type"),
+            SimpleString::PLUS => {
+                if let Some(simple_string) = SimpleString::decode(buff) {
+                    Some(RespType::SimpleStrings(simple_string))
+                } else {
+                    None
+                }
+            }
+            BulkString::DOLLAR => {
+                if let Some(bulk_string) = BulkString::decode(buff) {
+                    Some(RespType::BulkStrings(bulk_string))
+                } else {
+                    None
+                }
+            }
+            Integer::COLON => {
+                if let Some(integer) = Integer::decode(buff) {
+                    Some(RespType::Integers(integer))
+                } else {
+                    None
+                }
+            }
+            Boolean::OCTOTHORPE => {
+                if let Some(boolean) = Boolean::decode(buff) {
+                    Some(RespType::Booleans(boolean))
+                } else {
+                    None
+                }
+            }
+            Null::UNDERSCORE => {
+                if let Some(null) = Null::decode(buff) {
+                    Some(RespType::Nulls(null))
+                } else {
+                    None
+                }
+            }
+            Map::PERCENT => {
+                if let Some(map) = Map::decode(buff) {
+                    Some(RespType::Maps(map))
+                } else {
+                    None
+                }
+            }
+            Set::TIDLE => {
+                if let Some(set) = Set::decode(buff) {
+                    Some(RespType::Sets(set))
+                } else {
+                    None
+                }
+            }
+            Array::STAR => {
+                if let Some(array) = Array::decode(buff) {
+                    Some(RespType::Arrays(array))
+                } else {
+                    None
+                }
+            }
+            SimpleError::MINUS => {
+                if let Some(simple_error) = SimpleError::decode(buff) {
+                    Some(RespType::SimpleErrors(simple_error))
+                } else {
+                    None
+                }
+            }
+            BulkError::EXCLAMATION => {
+                if let Some(bulk_error) = BulkError::decode(buff) {
+                    Some(RespType::BulkErrors(bulk_error))
+                } else {
+                    None
+                }
+            }
+            _ => {
+                // Skip unknown type and continue
+                None
+            }
         }
     }
 
@@ -134,8 +200,9 @@ impl RespType {
         match self {
             RespType::Arrays(array) => array.encode(buff),
             RespType::BulkStrings(bulk_string) => bulk_string.encode(buff),
-
-            _ => panic!("Invalid resp type"),
+            _ => {
+                // For other types, we don't need to encode them in this context
+            }
         }
     }
 
@@ -194,10 +261,13 @@ pub struct SimpleString {
 impl SimpleString {
     const PLUS: u8 = b'+';
 
-    pub fn decode(buff: &mut BytesBuffer) -> SimpleString {
-        let string_bytes = buff.get_slice_until(TERMINATOR);
-        SimpleString {
-            value: String::from_utf8_lossy(string_bytes).to_string(),
+    pub fn decode(buff: &mut BytesBuffer) -> Option<SimpleString> {
+        if let Some(string_bytes) = buff.get_slice_until(TERMINATOR) {
+            Some(SimpleString {
+                value: String::from_utf8_lossy(string_bytes).to_string(),
+            })
+        } else {
+            None
         }
     }
 }
@@ -214,20 +284,29 @@ impl BulkString {
         BulkString { value }
     }
 
-    pub fn decode(buff: &mut BytesBuffer) -> BulkString {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<BulkString> {
         // length
-        let bytes_length = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
-            .parse::<usize>()
-            .unwrap();
+        if let Some(length_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(bytes_length) = String::from_utf8_lossy(length_bytes).parse::<usize>() {
+                // Check if enough data
+                if buff.has_remaining_at_least(bytes_length + 2) {
+                    // read data
+                    let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
 
-        // read data
-        let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
+                    // terminator
+                    buff.get_u8();
+                    buff.get_u8();
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        BulkString { value }
+                    Some(BulkString { value })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     pub fn encode(&self, buff: &mut BytesBuffer) {
@@ -246,10 +325,15 @@ pub struct Integer {
 impl Integer {
     const COLON: u8 = b':';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Integer {
-        let digits = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR));
-        Integer {
-            value: digits.parse::<isize>().unwrap(),
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Integer> {
+        if let Some(digits_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(value) = String::from_utf8_lossy(digits_bytes).parse::<isize>() {
+                Some(Integer { value })
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 }
@@ -261,15 +345,19 @@ pub struct Boolean {
 impl Boolean {
     const OCTOTHORPE: u8 = b'#';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Boolean {
-        let b_byte = buff.get_u8();
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Boolean> {
+        if buff.has_remaining_at_least(3) {
+            let b_byte = buff.get_u8();
 
-        // terminal
-        buff.get_u8();
-        buff.get_u8();
+            // terminal
+            buff.get_u8();
+            buff.get_u8();
 
-        let value = if b't' == b_byte { true } else { false };
-        Boolean { value }
+            let value = if b't' == b_byte { true } else { false };
+            Some(Boolean { value })
+        } else {
+            None
+        }
     }
 }
 
@@ -278,12 +366,16 @@ pub struct Null;
 impl Null {
     const UNDERSCORE: u8 = b'_';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Null {
-        // terminal
-        buff.get_u8();
-        buff.get_u8();
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Null> {
+        if buff.has_remaining_at_least(2) {
+            // terminal
+            buff.get_u8();
+            buff.get_u8();
 
-        Null
+            Some(Null)
+        } else {
+            None
+        }
     }
 }
 
@@ -322,26 +414,39 @@ pub struct Map {
 impl Map {
     const PERCENT: u8 = b'%';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Map {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Map> {
         // length number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
-            .parse::<usize>()
-            .unwrap();
+        if let Some(noe_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(noe) = String::from_utf8_lossy(noe_bytes).parse::<usize>() {
+                let mut map = BTreeMap::new();
+                let mut all_decoded = true;
+                
+                // read elements
+                for i in 0..noe {
+                    if let Some(key) = RespType::decode(buff) {
+                        if let Some(value) = RespType::decode(buff) {
+                            map.insert(OrderKey(i, key), value);
+                        } else {
+                            all_decoded = false;
+                            break;
+                        }
+                    } else {
+                        all_decoded = false;
+                        break;
+                    }
+                }
 
-        let mut map = BTreeMap::new();
-        // read terminal
-        for i in 0..noe {
-            let key = RespType::decode(buff);
-            let value = RespType::decode(buff);
-
-            map.insert(OrderKey(i, key), value);
+                if all_decoded {
+                    Some(Map { map })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
-
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Map { map }
     }
 }
 
@@ -352,23 +457,34 @@ pub struct Set {
 impl Set {
     const TIDLE: u8 = b'~';
 
-    pub fn decode(buff: &mut BytesBuffer) -> Set {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Set> {
         // number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
-            .parse::<usize>()
-            .unwrap();
+        if let Some(noe_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(noe) = String::from_utf8_lossy(noe_bytes).parse::<usize>() {
+                let mut value = HashSet::with_capacity(noe);
+                let mut all_decoded = true;
+                
+                // read elements
+                for i in 0..noe {
+                    if let Some(element) = RespType::decode(buff) {
+                        value.insert(OrderKey(i, element));
+                    } else {
+                        all_decoded = false;
+                        break;
+                    }
+                }
 
-        let mut value = HashSet::with_capacity(noe);
-        // read elements
-        for i in 0..noe {
-            value.insert(OrderKey(i, RespType::decode(buff)));
+                if all_decoded {
+                    Some(Set { value })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
-
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Set { value }
     }
 }
 
@@ -383,23 +499,34 @@ impl Array {
         Array { value }
     }
 
-    pub fn decode(buff: &mut BytesBuffer) -> Array {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<Array> {
         // number of elements
-        let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
-            .parse::<usize>()
-            .unwrap();
+        if let Some(noe_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(noe) = String::from_utf8_lossy(noe_bytes).parse::<usize>() {
+                let mut value = Vec::with_capacity(noe);
+                let mut all_decoded = true;
+                
+                // read elements
+                for _ in 0..noe {
+                    if let Some(element) = RespType::decode(buff) {
+                        value.push(element);
+                    } else {
+                        all_decoded = false;
+                        break;
+                    }
+                }
 
-        let mut value = Vec::with_capacity(noe);
-        // read terminal
-        for _ in 0..noe {
-            value.push(RespType::decode(buff));
+                if all_decoded {
+                    Some(Array { value })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         }
-
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        Array { value }
     }
 
     pub fn encode(&self, buff: &mut BytesBuffer) {
@@ -410,7 +537,6 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
-        buff.put_u8_slice(&TERMINATOR[..]);
     }
 }
 
@@ -421,9 +547,14 @@ pub struct SimpleError {
 impl SimpleError {
     const MINUS: u8 = b'-';
 
-    pub fn decode(buff: &mut BytesBuffer) -> SimpleError {
-        let value = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR)).to_string();
-        SimpleError { value }
+    pub fn decode(buff: &mut BytesBuffer) -> Option<SimpleError> {
+        if let Some(value_bytes) = buff.get_slice_until(TERMINATOR) {
+            Some(SimpleError {
+                value: String::from_utf8_lossy(value_bytes).to_string(),
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -434,19 +565,28 @@ pub struct BulkError {
 impl BulkError {
     const EXCLAMATION: u8 = b'!';
 
-    pub fn decode(buff: &mut BytesBuffer) -> BulkError {
+    pub fn decode(buff: &mut BytesBuffer) -> Option<BulkError> {
         // length
-        let bytes_length = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
-            .parse::<usize>()
-            .unwrap();
+        if let Some(length_bytes) = buff.get_slice_until(TERMINATOR) {
+            if let Ok(bytes_length) = String::from_utf8_lossy(length_bytes).parse::<usize>() {
+                // Check if enough data
+                if buff.has_remaining_at_least(bytes_length + 2) {
+                    // read data
+                    let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
 
-        // read data
-        let value = String::from_utf8_lossy(buff.get_slice(bytes_length)).to_string();
+                    // terminator
+                    buff.get_u8();
+                    buff.get_u8();
 
-        // terminator
-        buff.get_u8();
-        buff.get_u8();
-
-        BulkError { value }
+                    Some(BulkError { value })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }

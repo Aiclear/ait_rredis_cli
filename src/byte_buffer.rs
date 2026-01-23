@@ -69,6 +69,14 @@ impl BytesBuffer {
         self.r_pos < self.w_pos
     }
 
+    pub fn remaining(&self) -> usize {
+        self.w_pos - self.r_pos
+    }
+
+    pub fn has_remaining_at_least(&self, length: usize) -> bool {
+        self.remaining() >= length
+    }
+
     fn slice(&self, offset: usize, length: usize) -> &[u8] {
         &self.bytes[offset..offset + length]
     }
@@ -79,28 +87,29 @@ impl BytesBuffer {
         &self.bytes[old_pos..self.r_pos]
     }
 
-    pub fn get_slice_until(&mut self, until: &[u8]) -> &[u8] {
+    pub fn get_slice_until(&mut self, until: &[u8]) -> Option<&[u8]> {
         // mark position if buff don't have complete data
         self.mark();
 
         let old_pos = self.r_pos;
-        let mut bytes_count = 0;
         let mut terminator_state = 0;
 
         while self.has_remaining() {
             let byte = self.get_u8();
             if until[terminator_state] == byte {
                 terminator_state += 1;
+                if terminator_state == until.len() {
+                    // Found complete terminator
+                    let data_length = self.r_pos - old_pos - until.len();
+                    return Some(&self.bytes[old_pos..old_pos + data_length]);
+                }
             } else {
                 terminator_state = 0;
-                bytes_count += 1;
-            }
-
-            if terminator_state == until.len() {
-                break;
             }
         }
 
-        self.slice(old_pos, bytes_count)
+        // Not enough data, reset position
+        self.reset();
+        None
     }
 }

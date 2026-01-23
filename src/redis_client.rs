@@ -105,7 +105,12 @@ impl RedisClient {
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
-        self.xstream.read(&mut self.buffer)?;
-        Ok(RespType::decode(&mut self.buffer))
+        loop {
+            self.xstream.read(&mut self.buffer)?;
+            if let Some(resp) = RespType::decode(&mut self.buffer) {
+                return Ok(resp);
+            }
+            // If we get here, we need more data
+        }
     }
 }
