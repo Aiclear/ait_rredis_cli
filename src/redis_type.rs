@@ -177,7 +177,7 @@ impl fmt::Display for RespType {
                     return write!(f, "{}", "[]");
                 }
 
-                a.value.iter().for_each(|e| write!(f, "{}", e).unwrap());
+                a.value.iter().for_each(|e| writeln!(f, "{}", e).unwrap());
                 fmt::Result::Ok(())
             }
             RespType::SimpleErrors(se) => write!(f, "{}", se.value),
