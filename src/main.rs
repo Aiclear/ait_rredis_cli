@@ -17,6 +17,7 @@ mod redis_type;
 fn main() -> anyhow::Result<()> {
     // parse command line arguments
     let args: Vec<String> = env::args().collect();
+
     let redis_address = if args.len() == 2 {
         RedisAddress::new(&args[1], 6379, Hello::no_auth())
     } else if args.len() == 3 {

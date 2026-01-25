@@ -44,15 +44,18 @@ impl RedisAddress {
 struct XTcpStream(TcpStream);
 
 impl XTcpStream {
-    fn read(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
+    fn read(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
         // write bytes to buffer we should add w_pos
         let count = self.0.read(buffer.as_recv_mut_slice())?;
+        if 0 == count {
+            return Err(anyhow::anyhow!("Connection closed"));
+        }
         buffer.w_pos_forward(count);
 
         Ok(())
     }
 
-    fn write(&mut self, buffer: &mut BytesBuffer) -> io::Result<()> {
+    fn write(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
         self.0.write_all(buffer.as_send_slice())?;
         self.0.flush()?;
 
@@ -105,7 +108,9 @@ impl RedisClient {
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
+        // read byte from tcp stream
         self.xstream.read(&mut self.buffer)?;
+        // decode response
         Ok(RespType::decode(&mut self.buffer))
     }
 }
