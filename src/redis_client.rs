@@ -1,7 +1,4 @@
-use std::{
-    io::{self, Read, Write},
-    net::TcpStream,
-};
+use std::{io::Write, net::TcpStream};
 
 use anyhow::anyhow;
 
@@ -11,7 +8,7 @@ use crate::{
 };
 
 /// default 4MB buffer size
-const BUFFER_SIZE: usize = 4 * 1024 * 1024;
+const BUFFER_SIZE: usize = 1 * 1024 * 1024;
 
 /// redis server address
 pub struct RedisAddress {
@@ -46,19 +43,16 @@ struct XTcpStream(TcpStream);
 impl XTcpStream {
     fn read(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
         // write bytes to buffer we should add w_pos
-        let count = self.0.read(buffer.as_recv_mut_slice())?;
+        let count = buffer.read_bytes(&mut self.0)?;
         if 0 == count {
             return Err(anyhow::anyhow!("Connection closed"));
         }
-        buffer.w_pos_forward(count);
 
         Ok(())
     }
 
     fn write(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
-        self.0.write_all(buffer.as_send_slice())?;
-        self.0.flush()?;
-
+        buffer.write_bytes(&mut self.0)?;
         Ok(())
     }
 }
