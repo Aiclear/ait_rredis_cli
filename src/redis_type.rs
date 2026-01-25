@@ -4,6 +4,8 @@ use std::{
     hash::Hash,
 };
 
+use num_bigint::BigInt;
+
 use crate::byte_buffer::BytesBuffer;
 
 /// redis resp type default terminator
@@ -91,12 +93,16 @@ pub enum RespType {
     BulkStrings(BulkString),
     Integers(Integer),
     Booleans(Boolean),
+    Doubles(Double),
+    BigNumbers(BigNumber),
     Nulls(Null),
     Maps(Map),
     Sets(Set),
     Arrays(Array),
     SimpleErrors(SimpleError),
     BulkErrors(BulkError),
+    // local define resp type, no send to server
+    Unknown,
 }
 
 impl RespType {
@@ -107,6 +113,8 @@ impl RespType {
             BulkString::DOLLAR => RespType::BulkStrings(BulkString::decode(buff)),
             Integer::COLON => RespType::Integers(Integer::decode(buff)),
             Boolean::OCTOTHORPE => RespType::Booleans(Boolean::decode(buff)),
+            Double::COMMA => RespType::Doubles(Double::decode(buff)),
+            BigNumber::LEFT_PARENTHESIS => RespType::BigNumbers(BigNumber::decode(buff)),
             Null::UNDERSCORE => RespType::Nulls(Null::decode(buff)),
             Map::PERCENT => RespType::Maps(Map::decode(buff)),
             Set::TIDLE => RespType::Sets(Set::decode(buff)),
@@ -114,7 +122,7 @@ impl RespType {
             SimpleError::MINUS => RespType::SimpleErrors(SimpleError::decode(buff)),
             BulkError::EXCLAMATION => RespType::BulkErrors(BulkError::decode(buff)),
 
-            _ => panic!("Invalid resp type"),
+            _ => Self::Unknown,
         }
     }
 
@@ -153,6 +161,8 @@ impl fmt::Display for RespType {
             RespType::BulkStrings(bs) => write!(f, "{}", bs.value),
             RespType::Integers(i) => write!(f, "{}", i.value),
             RespType::Booleans(b) => write!(f, "{}", b.value),
+            RespType::Doubles(d) => write!(f, "{}", d.value),
+            RespType::BigNumbers(bn) => write!(f, "{}", bn.value),
             RespType::Nulls(_) => write!(f, "{}", "nil"),
             RespType::Maps(m) => {
                 if m.map.is_empty() {
@@ -182,6 +192,7 @@ impl fmt::Display for RespType {
             }
             RespType::SimpleErrors(se) => write!(f, "{}", se.value),
             RespType::BulkErrors(be) => write!(f, "{}", be.value),
+            RespType::Unknown => write!(f, "Unknown Response"),
         }
     }
 }
@@ -269,6 +280,36 @@ impl Boolean {
 
         let value = if b't' == b_byte { true } else { false };
         Boolean { value }
+    }
+}
+
+pub struct Double {
+    value: f64,
+}
+
+impl Double {
+    const COMMA: u8 = b',';
+
+    pub fn decode(buff: &mut BytesBuffer) -> Double {
+        let digits = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR));
+        Double {
+            value: digits.parse::<f64>().unwrap(),
+        }
+    }
+}
+
+pub struct BigNumber {
+    value: BigInt,
+}
+
+impl BigNumber {
+    const LEFT_PARENTHESIS: u8 = b'(';
+
+    pub fn decode(buff: &mut BytesBuffer) -> BigNumber {
+        let digits = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR));
+        BigNumber {
+            value: digits.parse::<BigInt>().unwrap(),
+        }
     }
 }
 
