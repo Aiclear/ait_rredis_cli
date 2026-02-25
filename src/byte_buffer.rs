@@ -1,3 +1,5 @@
+use std::io::{Read, Write};
+
 // need a simple and easy struc for read bytes
 pub struct BytesBuffer {
     /// buffer read position
@@ -21,21 +23,18 @@ impl BytesBuffer {
         }
     }
 
-    pub fn as_recv_mut_slice(&mut self) -> &mut [u8] {
-        &mut self.bytes[self.r_pos..self.capacity]
+    pub fn read_bytes(&mut self, reader: &mut impl Read) -> anyhow::Result<usize> {
+        let count = reader.read(&mut self.bytes[self.w_pos..self.capacity])?;
+        self.w_pos += count;
+
+        Ok(count)
     }
 
-    pub fn as_send_slice(&mut self) -> &[u8] {
-        let send_buf = &self.bytes[self.r_pos..self.w_pos];
-
-        // write all reset
-        self.r_pos = 0;
-        self.w_pos = 0;
-        send_buf
-    }
-
-    pub fn w_pos_forward(&mut self, length: usize) {
-        self.w_pos += length;
+    pub fn write_bytes(&mut self, writer: &mut impl Write) -> anyhow::Result<()> {
+        writer.write_all(&self.bytes[self.r_pos..self.w_pos])?;
+        self.r_pos = self.w_pos;
+        self.compact();
+        Ok(())
     }
 
     pub fn mark(&mut self) {
@@ -101,6 +100,23 @@ impl BytesBuffer {
             }
         }
 
+        // handle incomplete data
+        if terminator_state != until.len() {
+            self.reset();
+        }
+
         self.slice(old_pos, bytes_count)
+    }
+
+    pub fn compact(&mut self) {
+        if self.r_pos == self.w_pos {
+            self.r_pos = 0;
+            self.w_pos = 0;
+        } else {
+            let bytes_count = self.w_pos - self.r_pos;
+            self.bytes.copy_within(self.r_pos..self.w_pos, 0);
+            self.w_pos = bytes_count;
+            self.r_pos = 0;
+        }
     }
 }

@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+num-bigint = "0.4.6"
+rustyline = "14.0"
