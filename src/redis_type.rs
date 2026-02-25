@@ -12,6 +12,7 @@ use crate::byte_buffer::BytesBuffer;
 const TERMINATOR: &'static [u8; 2] = b"\r\n";
 
 /// this redis client support resp version
+#[allow(unused)]
 enum ProtoVer {
     Resp2,
     Resp3,
@@ -198,7 +199,7 @@ impl fmt::Display for RespType {
 }
 
 pub struct SimpleString {
-    value: String,
+    pub value: String,
 }
 
 impl SimpleString {
@@ -214,7 +215,7 @@ impl SimpleString {
 
 /// $<length>\r\n<data>\r\n
 pub struct BulkString {
-    value: String,
+    pub value: String,
 }
 
 impl BulkString {
@@ -250,7 +251,7 @@ impl BulkString {
 }
 
 pub struct Integer {
-    value: isize,
+    pub value: isize,
 }
 
 impl Integer {
@@ -405,7 +406,7 @@ impl Set {
 }
 
 pub struct Array {
-    value: Vec<RespType>,
+    pub value: Vec<RespType>,
 }
 
 impl Array {

@@ -107,4 +107,10 @@ impl RedisClient {
         // decode response
         Ok(RespType::decode(&mut self.buffer))
     }
+
+    pub fn execute_command(&mut self, command: &str) -> anyhow::Result<RespType> {
+        let resp_type = RespType::create_from_command_line(command);
+        self.write_command(resp_type)?;
+        self.read_resp()
+    }
 }
