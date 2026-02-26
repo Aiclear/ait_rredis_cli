@@ -210,6 +210,10 @@ impl SimpleString {
             value: String::from_utf8_lossy(string_bytes).to_string(),
         }
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 /// $<length>\r\n<data>\r\n
@@ -246,6 +250,10 @@ impl BulkString {
         buff.put_u8_slice(&TERMINATOR[..]);
         buff.put_u8_slice(self.value.as_bytes());
         buff.put_u8_slice(&TERMINATOR[..]);
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
     }
 }
 
@@ -363,13 +371,11 @@ impl Map {
     const PERCENT: u8 = b'%';
 
     pub fn decode(buff: &mut BytesBuffer) -> Map {
-        // length number of elements
         let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
             .parse::<usize>()
             .unwrap();
 
         let mut map = BTreeMap::new();
-        // read terminal
         for i in 0..noe {
             let key = RespType::decode(buff);
             let value = RespType::decode(buff);
@@ -378,6 +384,14 @@ impl Map {
         }
 
         Map { map }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&RespType, &RespType)> {
+        self.map.iter().map(|(k, v)| (&k.1, v))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
     }
 }
 
@@ -389,18 +403,24 @@ impl Set {
     const TIDLE: u8 = b'~';
 
     pub fn decode(buff: &mut BytesBuffer) -> Set {
-        // number of elements
         let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
             .parse::<usize>()
             .unwrap();
 
         let mut value = HashSet::with_capacity(noe);
-        // read elements
         for i in 0..noe {
             value.insert(OrderKey(i, RespType::decode(buff)));
         }
 
         Set { value }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RespType> {
+        self.value.iter().map(|k| &k.1)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
     }
 }
 
@@ -416,13 +436,11 @@ impl Array {
     }
 
     pub fn decode(buff: &mut BytesBuffer) -> Array {
-        // number of elements
         let noe = String::from_utf8_lossy(buff.get_slice_until(TERMINATOR))
             .parse::<usize>()
             .unwrap();
 
         let mut value = Vec::with_capacity(noe);
-        // read terminal
         for _ in 0..noe {
             value.push(RespType::decode(buff));
         }
@@ -438,6 +456,26 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RespType> {
+        self.value.iter()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&RespType> {
+        self.value.get(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
+
+    pub fn as_slice(&self) -> &[RespType] {
+        &self.value
     }
 }
 
