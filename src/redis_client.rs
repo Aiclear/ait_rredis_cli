@@ -1,6 +1,7 @@
-use std::{io::Write, net::TcpStream};
+use std::{io::Write, net::TcpStream, time::Duration};
 
 use anyhow::anyhow;
+use socket2::{Socket, TcpKeepalive};
 
 use crate::{
     byte_buffer::BytesBuffer,
@@ -64,8 +65,30 @@ pub struct RedisClient {
 
 impl RedisClient {
     pub fn connect(redis_address: RedisAddress) -> anyhow::Result<Self> {
-        // connect to redis server
-        let mut stream = TcpStream::connect(redis_address.address())?;
+        // connect to redis server using socket2 for more control
+        let addr: std::net::SocketAddr = redis_address.address().parse()?;
+        let socket = Socket::new(
+            socket2::Domain::for_address(addr),
+            socket2::Type::STREAM,
+            Some(socket2::Protocol::TCP),
+        )?;
+        
+        socket.set_nodelay(true)?;
+        socket.set_read_timeout(Some(Duration::from_secs(30)))?;
+        socket.set_write_timeout(Some(Duration::from_secs(30)))?;
+        
+        let keepalive = TcpKeepalive::new()
+            .with_time(Duration::from_secs(60))
+            .with_interval(Duration::from_secs(10));
+        socket.set_tcp_keepalive(&keepalive)?;
+        
+        socket.set_linger(Some(Duration::from_secs(0)))?;
+        
+        socket.connect(&addr.into())?;
+        
+        let mut stream: TcpStream = socket.into();
+        
+        stream.set_nonblocking(false)?;
 
         // handshake
         stream.write(&redis_address.hello()[..])?;
