@@ -30,6 +30,7 @@ impl ProtoVer {
     }
 }
 
+#[derive(Clone)]
 pub struct Hello {
     username: Option<String>,
     password: Option<String>,
@@ -198,7 +199,7 @@ impl fmt::Display for RespType {
 }
 
 pub struct SimpleString {
-    value: String,
+    pub value: String,
 }
 
 impl SimpleString {
@@ -214,7 +215,7 @@ impl SimpleString {
 
 /// $<length>\r\n<data>\r\n
 pub struct BulkString {
-    value: String,
+    pub value: String,
 }
 
 impl BulkString {
@@ -250,7 +251,7 @@ impl BulkString {
 }
 
 pub struct Integer {
-    value: isize,
+    pub value: isize,
 }
 
 impl Integer {
@@ -265,7 +266,7 @@ impl Integer {
 }
 
 pub struct Boolean {
-    value: bool,
+    pub value: bool,
 }
 
 impl Boolean {
@@ -284,7 +285,7 @@ impl Boolean {
 }
 
 pub struct Double {
-    value: f64,
+    pub value: f64,
 }
 
 impl Double {
@@ -299,7 +300,7 @@ impl Double {
 }
 
 pub struct BigNumber {
-    value: BigInt,
+    pub value: BigInt,
 }
 
 impl BigNumber {
@@ -327,7 +328,7 @@ impl Null {
     }
 }
 
-pub struct OrderKey(usize, RespType);
+pub struct OrderKey(pub usize, pub RespType);
 
 impl PartialOrd for OrderKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -356,7 +357,7 @@ impl Hash for OrderKey {
 }
 
 pub struct Map {
-    map: BTreeMap<OrderKey, RespType>,
+    pub map: BTreeMap<OrderKey, RespType>,
 }
 
 impl Map {
@@ -382,7 +383,7 @@ impl Map {
 }
 
 pub struct Set {
-    value: HashSet<OrderKey>,
+    pub value: HashSet<OrderKey>,
 }
 
 impl Set {
@@ -405,7 +406,7 @@ impl Set {
 }
 
 pub struct Array {
-    value: Vec<RespType>,
+    pub value: Vec<RespType>,
 }
 
 impl Array {
@@ -442,7 +443,7 @@ impl Array {
 }
 
 pub struct SimpleError {
-    value: String,
+    pub value: String,
 }
 
 impl SimpleError {
@@ -455,7 +456,7 @@ impl SimpleError {
 }
 
 pub struct BulkError {
-    value: String,
+    pub value: String,
 }
 
 impl BulkError {
