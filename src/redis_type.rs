@@ -198,7 +198,7 @@ impl fmt::Display for RespType {
 }
 
 pub struct SimpleString {
-    value: String,
+    pub value: String,
 }
 
 impl SimpleString {
@@ -214,7 +214,7 @@ impl SimpleString {
 
 /// $<length>\r\n<data>\r\n
 pub struct BulkString {
-    value: String,
+    pub value: String,
 }
 
 impl BulkString {
@@ -250,7 +250,7 @@ impl BulkString {
 }
 
 pub struct Integer {
-    value: isize,
+    pub value: isize,
 }
 
 impl Integer {
@@ -265,7 +265,7 @@ impl Integer {
 }
 
 pub struct Boolean {
-    value: bool,
+    pub value: bool,
 }
 
 impl Boolean {
@@ -284,7 +284,7 @@ impl Boolean {
 }
 
 pub struct Double {
-    value: f64,
+    pub value: f64,
 }
 
 impl Double {
@@ -327,7 +327,7 @@ impl Null {
     }
 }
 
-pub struct OrderKey(usize, RespType);
+pub struct OrderKey(pub usize, pub RespType);
 
 impl PartialOrd for OrderKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -356,7 +356,7 @@ impl Hash for OrderKey {
 }
 
 pub struct Map {
-    map: BTreeMap<OrderKey, RespType>,
+    pub map: BTreeMap<OrderKey, RespType>,
 }
 
 impl Map {
@@ -405,7 +405,7 @@ impl Set {
 }
 
 pub struct Array {
-    value: Vec<RespType>,
+    pub value: Vec<RespType>,
 }
 
 impl Array {
