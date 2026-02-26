@@ -1,4 +1,8 @@
-use std::{io::Write, net::TcpStream};
+use std::{
+    io::Write,
+    net::TcpStream,
+    os::windows::io::{AsRawSocket, FromRawSocket},
+};
 
 use anyhow::anyhow;
 
@@ -11,6 +15,7 @@ use crate::{
 const BUFFER_SIZE: usize = 1 * 1024 * 1024;
 
 /// redis server address
+#[derive(Clone)]
 pub struct RedisAddress {
     /// server host
     host: String,
@@ -106,5 +111,17 @@ impl RedisClient {
         self.xstream.read(&mut self.buffer)?;
         // decode response
         Ok(RespType::decode(&mut self.buffer))
+    }
+
+    pub fn try_clone(&self) -> anyhow::Result<Self> {
+        let raw_socket = self.xstream.0.as_raw_socket();
+        let stream = unsafe { TcpStream::from_raw_socket(raw_socket) };
+        let cloned_stream = stream.try_clone()?;
+        std::mem::forget(stream);
+
+        Ok(Self {
+            buffer: BytesBuffer::new(BUFFER_SIZE),
+            xstream: XTcpStream(cloned_stream),
+        })
     }
 }
