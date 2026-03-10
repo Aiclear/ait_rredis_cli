@@ -11,6 +11,7 @@ use crate::{
 const BUFFER_SIZE: usize = 1 * 1024 * 1024;
 
 /// redis server address
+#[derive(Clone)]
 pub struct RedisAddress {
     /// server host
     host: String,

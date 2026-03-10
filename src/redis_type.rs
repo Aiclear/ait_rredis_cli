@@ -30,6 +30,7 @@ impl ProtoVer {
     }
 }
 
+#[derive(Clone)]
 pub struct Hello {
     username: Option<String>,
     password: Option<String>,
