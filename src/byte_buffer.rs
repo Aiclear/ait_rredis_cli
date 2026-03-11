@@ -1,4 +1,13 @@
 use std::io::{Read, Write};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum BufferError {
+    #[error("Incomplete data, need more bytes")]
+    Incomplete,
+    #[error("Invalid data: {0}")]
+    Invalid(String),
+}
 
 // need a simple and easy struc for read bytes
 pub struct BytesBuffer {
@@ -78,34 +87,32 @@ impl BytesBuffer {
         &self.bytes[old_pos..self.r_pos]
     }
 
-    pub fn get_slice_until(&mut self, until: &[u8]) -> &[u8] {
-        // mark position if buff don't have complete data
+    pub fn get_slice_until(&mut self, until: &[u8]) -> Option<&[u8]> {
         self.mark();
 
         let old_pos = self.r_pos;
-        let mut bytes_count = 0;
-        let mut terminator_state = 0;
+        let mut i = old_pos;
 
-        while self.has_remaining() {
-            let byte = self.get_u8();
-            if until[terminator_state] == byte {
-                terminator_state += 1;
-            } else {
-                terminator_state = 0;
-                bytes_count += 1;
+        while i < self.w_pos {
+            let mut found = true;
+            for j in 0..until.len() {
+                if i + j >= self.w_pos || self.bytes[i + j] != until[j] {
+                    found = false;
+                    break;
+                }
             }
 
-            if terminator_state == until.len() {
-                break;
+            if found {
+                self.r_pos = i + until.len();
+                return Some(self.slice(old_pos, i - old_pos));
             }
+
+            i += 1;
         }
 
-        // handle incomplete data
-        if terminator_state != until.len() {
-            self.reset();
-        }
-
-        self.slice(old_pos, bytes_count)
+        // Incomplete data, reset position
+        self.reset();
+        None
     }
 
     pub fn compact(&mut self) {
@@ -118,5 +125,37 @@ impl BytesBuffer {
             self.w_pos = bytes_count;
             self.r_pos = 0;
         }
+    }
+
+    /// Get the number of remaining bytes available to read
+    pub fn remaining(&self) -> usize {
+        self.w_pos - self.r_pos
+    }
+
+    /// Get the current read position
+    pub fn r_pos(&self) -> usize {
+        self.r_pos
+    }
+
+    /// Get the current write position
+    pub fn w_pos(&self) -> usize {
+        self.w_pos
+    }
+    
+    /// Reset buffer to empty state
+    pub fn reset_buffer(&mut self) {
+        self.r_pos = 0;
+        self.w_pos = 0;
+        self.mark = None;
+    }
+    
+    /// Get available data slice from read position to write position
+    pub fn get_available_data(&self) -> &[u8] {
+        &self.bytes[self.r_pos..self.w_pos]
+    }
+    
+    /// Get mutable slice for writing
+    pub fn get_write_slice(&mut self) -> &mut [u8] {
+        &mut self.bytes[self.w_pos..self.capacity]
     }
 }

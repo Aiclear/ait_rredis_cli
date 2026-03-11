@@ -7,8 +7,8 @@ use crate::{
     redis_type::{Hello, RespType},
 };
 
-/// default 4MB buffer size
-const BUFFER_SIZE: usize = 1 * 1024 * 1024;
+/// default 1MB buffer size
+const BUFFER_SIZE: usize = 1024 * 1024;
 
 /// redis server address
 pub struct RedisAddress {
@@ -42,48 +42,45 @@ struct XTcpStream(TcpStream);
 
 impl XTcpStream {
     fn read(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
-        // write bytes to buffer we should add w_pos
         let count = buffer.read_bytes(&mut self.0)?;
         if 0 == count {
             return Err(anyhow::anyhow!("Connection closed"));
         }
-
         Ok(())
     }
 
-    fn write(&mut self, buffer: &mut BytesBuffer) -> anyhow::Result<()> {
-        buffer.write_bytes(&mut self.0)?;
+    fn write_all(&mut self, data: &[u8]) -> anyhow::Result<()> {
+        self.0.write_all(data)?;
+        self.0.flush()?;
         Ok(())
     }
 }
 
 pub struct RedisClient {
-    buffer: BytesBuffer,
+    read_buffer: BytesBuffer,
+    write_buffer: BytesBuffer,
     xstream: XTcpStream,
 }
 
 impl RedisClient {
     pub fn connect(redis_address: RedisAddress) -> anyhow::Result<Self> {
-        // connect to redis server
         let mut stream = TcpStream::connect(redis_address.address())?;
 
         // handshake
-        stream.write(&redis_address.hello()[..])?;
+        stream.write_all(&redis_address.hello()[..])?;
         stream.flush()?;
 
-        // check handshake resp
         let mut client = Self {
-            buffer: BytesBuffer::new(BUFFER_SIZE),
+            read_buffer: BytesBuffer::new(BUFFER_SIZE),
+            write_buffer: BytesBuffer::new(BUFFER_SIZE),
             xstream: XTcpStream(stream),
         };
 
         let result = client.read_resp()?;
         if result.is_err_type() {
-            // Print error message
             eprintln!("Error: {}", result);
             return Err(anyhow!("connect failed"));
         } else {
-            // print handshake resp
             println!("Connected successfully!");
             println!("{result}");
         }
@@ -92,19 +89,36 @@ impl RedisClient {
     }
 
     pub fn write_command(&mut self, resp_type: RespType) -> anyhow::Result<()> {
-        // encode command
-        resp_type.encode(&mut self.buffer);
-
-        // flush buffer
-        self.xstream.write(&mut self.buffer)?;
+        // Reset write buffer before encoding new command
+        self.write_buffer.reset_buffer();
+        
+        // Encode command to write buffer
+        resp_type.encode(&mut self.write_buffer);
+        
+        // Get the encoded data
+        let data = self.write_buffer.get_available_data();
+        
+        // Write directly to stream
+        self.xstream.write_all(data)?;
 
         Ok(())
     }
 
     pub fn read_resp(&mut self) -> anyhow::Result<RespType> {
-        // read byte from tcp stream
-        self.xstream.read(&mut self.buffer)?;
-        // decode response
-        Ok(RespType::decode(&mut self.buffer))
+        loop {
+            match RespType::decode(&mut self.read_buffer) {
+                Ok(resp) => return Ok(resp),
+                Err(crate::redis_type::RespError::Incomplete) => {
+                    self.xstream.read(&mut self.read_buffer)?;
+                }
+                Err(e) => return Err(anyhow::anyhow!(e)),
+            }
+        }
+    }
+    
+    /// Clear any pending data in buffers - useful before transferring client ownership
+    pub fn clear_buffers(&mut self) {
+        self.read_buffer.reset_buffer();
+        self.write_buffer.reset_buffer();
     }
 }
