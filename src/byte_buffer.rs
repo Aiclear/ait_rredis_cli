@@ -31,7 +31,20 @@ impl BytesBuffer {
     }
 
     pub fn write_bytes(&mut self, writer: &mut impl Write) -> anyhow::Result<()> {
-        writer.write_all(&self.bytes[self.r_pos..self.w_pos])?;
+        // Defensive check: ensure r_pos doesn't exceed w_pos
+        if self.r_pos > self.w_pos {
+            // If positions are invalid, reset them
+            self.r_pos = 0;
+            self.w_pos = 0;
+            self.mark = None;
+            return Ok(());
+        }
+        
+        // Only write if there's data to write
+        if self.r_pos < self.w_pos {
+            writer.write_all(&self.bytes[self.r_pos..self.w_pos])?;
+        }
+        
         self.r_pos = self.w_pos;
         self.compact();
         Ok(())
@@ -43,7 +56,10 @@ impl BytesBuffer {
 
     pub fn reset(&mut self) {
         if let Some(m_pos) = self.mark {
-            self.r_pos = m_pos;
+            // Only reset if the marked position is valid (<= w_pos)
+            if m_pos <= self.w_pos {
+                self.r_pos = m_pos;
+            }
             self.mark = None;
         }
     }
@@ -118,5 +134,7 @@ impl BytesBuffer {
             self.w_pos = bytes_count;
             self.r_pos = 0;
         }
+        // Clear the mark because data positions have changed
+        self.mark = None;
     }
 }
