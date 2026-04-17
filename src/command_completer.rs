@@ -353,14 +353,21 @@ impl RedisCommandCompleter {
         
         if let Some(cmd) = self.get_command(&cmd_name) {
             if !cmd.arguments.is_empty() {
-                let arg_index = if line.ends_with(' ') {
-                    parts.len() - 1
+                // Calculate arg_index with proper boundary checks
+                let arg_index: isize = if line.ends_with(' ') {
+                    // User has entered command and a space, now entering first/next argument
+                    parts.len() as isize - 1
+                } else if parts.len() >= 2 {
+                    // User is entering the nth argument (not yet completed)
+                    parts.len() as isize - 2
                 } else {
-                    parts.len() - 2
+                    // User is still entering the command name, no parameter hint needed
+                    return None;
                 };
 
-                if arg_index < cmd.arguments.len() {
-                    let arg = &cmd.arguments[arg_index];
+                // Ensure arg_index is non-negative
+                if arg_index >= 0 && (arg_index as usize) < cmd.arguments.len() {
+                    let arg = &cmd.arguments[arg_index as usize];
                     let hint = if arg.optional {
                         format!("[{}] ({})", arg.name, arg.arg_type)
                     } else {
