@@ -53,7 +53,72 @@ impl Hello {
         }
     }
 
+    pub fn has_password(&self) -> bool {
+        self.password.is_some()
+    }
+
+    pub fn password(&self) -> Option<&String> {
+        self.password.as_ref()
+    }
+
+    pub fn username(&self) -> Option<&String> {
+        self.username.as_ref()
+    }
+
+    pub fn client_name(&self) -> Option<&String> {
+        Some(&self.client_name)
+    }
+
+    /// Helper function to encode a bulk string in RESP format
+    fn encode_bulk_string(s: &str) -> Vec<u8> {
+        let mut result = vec![];
+        result.push(b'$');
+        result.extend_from_slice(s.len().to_string().as_bytes());
+        result.extend_from_slice(b"\r\n");
+        result.extend_from_slice(s.as_bytes());
+        result.extend_from_slice(b"\r\n");
+        result
+    }
+
+    /// Encode HELLO command in RESP array format
     pub fn encode(&self) -> Vec<u8> {
+        // Build HELLO command in RESP array format
+        // Format: *<count>\r\n$<len>\r\nHELLO\r\n$<len>\r\n3\r\n...
+        
+        let mut parts = vec![];
+        
+        // HELLO command
+        parts.push(Self::encode_bulk_string("HELLO"));
+        
+        // Protocol version
+        parts.push(Self::encode_bulk_string(ProtoVer::newest_ver().str_ver()));
+        
+        // AUTH username password (if password is provided)
+        if self.password.is_some() {
+            parts.push(Self::encode_bulk_string("AUTH"));
+            parts.push(Self::encode_bulk_string(self.username.as_ref().unwrap_or(&"default".to_string())));
+            parts.push(Self::encode_bulk_string(self.password.as_ref().unwrap()));
+        }
+        
+        // SETNAME client_name
+        parts.push(Self::encode_bulk_string("SETNAME"));
+        parts.push(Self::encode_bulk_string(&self.client_name));
+        
+        // Build the array
+        let mut result = vec![];
+        result.push(b'*');
+        result.extend_from_slice(parts.len().to_string().as_bytes());
+        result.extend_from_slice(b"\r\n");
+        
+        for part in parts {
+            result.extend_from_slice(&part);
+        }
+        
+        result
+    }
+
+    /// Encode HELLO command in inline format (compatible with older Redis versions)
+    pub fn encode_inline(&self) -> Vec<u8> {
         // hello proto_ver [auth username password setname client_name]
         let mut hello_v = vec![];
 
@@ -127,10 +192,10 @@ impl RespType {
     }
 
     /// build a RespType from command line input
-    /// like `set hello world` => Array([SimpleString("set"), BulkString("hello"), BulkString("world")])
+    /// like `set hello world` => Array([BulkString("set"), BulkString("hello"), BulkString("world")])
     pub fn create_from_command_line(value: &str) -> RespType {
         let arrays: Vec<RespType> = value
-            .split(" ")
+            .split_whitespace()
             .map(|t| RespType::BulkStrings(BulkString::new(t.to_string())))
             .collect();
 
