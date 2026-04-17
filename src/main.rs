@@ -9,7 +9,7 @@ use tokio::runtime::Runtime;
 use crate::{
     command_completer::{RedisCommandCompleter, RedisHelper},
     redis_client::{RedisAddress, RedisClient},
-    redis_type::{Hello, RespType},
+    redis_type::Hello,
     tui_monitor::{RedisMetrics, run_monitor},
 };
 
@@ -39,26 +39,16 @@ fn main() -> anyhow::Result<()> {
     };
 
     // Create client
-    let mut redis_client = RedisClient::connect(redis_address)?;
+    let redis_client = RedisClient::connect(redis_address)?;
 
-    // Get command docs for completion
-    let command_completer = {
-        let mut completer = RedisCommandCompleter::new();
-        
-        // Execute COMMAND DOCS to get all commands
-        let command_docs = RespType::create_from_command_line("COMMAND DOCS");
-        redis_client.write_command(command_docs)?;
-        let response = redis_client.read_resp()?;
-        
-        if !response.is_err_type() {
-            completer.parse_command_docs(&response);
-            println!("Loaded {} commands for completion", completer.get_command_count());
-        } else {
-            println!("Warning: Could not load command docs for completion");
-        }
-        
-        completer
-    };
+    // Create command completer with built-in commands
+    let mut command_completer = RedisCommandCompleter::new();
+    
+    // Wrap client in Arc<Mutex> for shared access
+    let client_arc = Arc::new(Mutex::new(redis_client));
+    
+    // Set redis client in completer (will try to fetch command list from server)
+    command_completer.set_redis_client(Arc::clone(&client_arc));
 
     // Create RedisHelper for rustyline
     let helper = RedisHelper::new(command_completer);
@@ -94,7 +84,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 
                 // Add to history
-                rl.add_history_entry(line_trimmed);
+                let _ = rl.add_history_entry(line_trimmed);
                 
                 // Process commands
                 match line_trimmed {
@@ -111,18 +101,25 @@ fn main() -> anyhow::Result<()> {
                         
                         // Spawn a task to update metrics
                         let metrics_clone = Arc::clone(&metrics);
-                        let mut monitor_client = redis_client.try_clone()?;
+                        let monitor_client = match client_arc.lock().unwrap().try_clone() {
+                            Ok(c) => c,
+                            Err(e) => {
+                                eprintln!("Failed to clone connection for monitor: {}", e);
+                                continue;
+                            }
+                        };
                         
                         let rt = Runtime::new()?;
                         rt.block_on(async {
                             // Spawn metrics update task
                             let metrics_task = tokio::spawn(async move {
+                                let mut monitor_client = monitor_client;
                                 let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(1));
                                 loop {
                                     interval.tick().await;
                                     
                                     // Get INFO all
-                                    let info_cmd = RespType::create_from_command_line("INFO all");
+                                    let info_cmd = crate::redis_type::RespType::create_from_command_line("INFO all");
                                     if monitor_client.write_command(info_cmd).is_ok() {
                                         if let std::result::Result::Ok(response) = monitor_client.read_resp() {
                                             if !response.is_err_type() {
@@ -150,24 +147,17 @@ fn main() -> anyhow::Result<()> {
                         println!("Exited monitor mode");
                     }
                     command => {
-                        // Check if we can provide hints for this command
-                        if let Some(helper) = rl.helper() {
-                            let parts: Vec<&str> = command.split_whitespace().collect();
-                            if !parts.is_empty() {
-                                let _cmd_info = helper.completer().get_command(parts[0]);
-                                // Show command information if it's a new command
-                                // This helps users understand what arguments are expected
-                            }
-                        }
-                        
                         // Execute the command
-                        let resp_type = RespType::create_from_command_line(command);
+                        let resp_type = crate::redis_type::RespType::create_from_command_line(command);
+                        
+                        // Get the client and send command
+                        let mut client = client_arc.lock().unwrap();
                         
                         // Send command to Redis server
-                        redis_client.write_command(resp_type)?;
+                        client.write_command(resp_type)?;
                         
                         // Read response from Redis server
-                        let response = redis_client.read_resp()?;
+                        let response = client.read_resp()?;
                         
                         // Print response
                         println!("{response}");

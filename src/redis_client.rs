@@ -33,11 +33,7 @@ impl RedisAddress {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub fn hello(&self) -> Vec<u8> {
-        self.hello.encode()
-    }
-
-    pub fn hello_info(&self) -> &Hello {
+    pub fn hello(&self) -> &Hello {
         &self.hello
     }
 }
@@ -69,39 +65,6 @@ pub struct RedisClient {
 impl RedisClient {
     pub fn connect(redis_address: RedisAddress) -> anyhow::Result<Self> {
         // connect to redis server
-        let mut stream = TcpStream::connect(redis_address.address())?;
-
-        // handshake using inline format (compatible with more Redis versions)
-        let hello_cmd = redis_address.hello_info().encode_inline();
-        stream.write(&hello_cmd[..])?;
-        stream.flush()?;
-
-        // check handshake resp
-        let mut client = Self {
-            buffer: BytesBuffer::new(BUFFER_SIZE),
-            xstream: XTcpStream(stream),
-        };
-
-        let result = client.read_resp()?;
-        if result.is_err_type() {
-            // Print error message
-            eprintln!("Error during handshake: {}", result);
-            eprintln!("Trying without HELLO command...");
-            
-            // Fallback: try to connect without HELLO command
-            return Self::connect_simple(redis_address);
-        } else {
-            // print handshake resp
-            println!("Connected successfully!");
-            println!("{result}");
-        }
-
-        Ok(client)
-    }
-
-    /// Simple connection without HELLO command (for older Redis versions)
-    fn connect_simple(redis_address: RedisAddress) -> anyhow::Result<Self> {
-        // connect to redis server
         let stream = TcpStream::connect(redis_address.address())?;
 
         let mut client = Self {
@@ -110,7 +73,7 @@ impl RedisClient {
         };
 
         // Try to authenticate if password is provided
-        let hello = redis_address.hello_info();
+        let hello = redis_address.hello();
         if hello.has_password() {
             let auth_cmd = if let Some(username) = hello.username() {
                 // AUTH username password (Redis 6+)
