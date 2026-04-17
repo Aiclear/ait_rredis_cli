@@ -36,6 +36,10 @@ impl RedisAddress {
     pub fn hello(&self) -> Vec<u8> {
         self.hello.encode()
     }
+
+    pub fn hello_info(&self) -> &Hello {
+        &self.hello
+    }
 }
 
 struct XTcpStream(TcpStream);
@@ -67,8 +71,9 @@ impl RedisClient {
         // connect to redis server
         let mut stream = TcpStream::connect(redis_address.address())?;
 
-        // handshake
-        stream.write(&redis_address.hello()[..])?;
+        // handshake using inline format (compatible with more Redis versions)
+        let hello_cmd = redis_address.hello_info().encode_inline();
+        stream.write(&hello_cmd[..])?;
         stream.flush()?;
 
         // check handshake resp
@@ -80,12 +85,60 @@ impl RedisClient {
         let result = client.read_resp()?;
         if result.is_err_type() {
             // Print error message
-            eprintln!("Error: {}", result);
-            return Err(anyhow!("connect failed"));
+            eprintln!("Error during handshake: {}", result);
+            eprintln!("Trying without HELLO command...");
+            
+            // Fallback: try to connect without HELLO command
+            return Self::connect_simple(redis_address);
         } else {
             // print handshake resp
             println!("Connected successfully!");
             println!("{result}");
+        }
+
+        Ok(client)
+    }
+
+    /// Simple connection without HELLO command (for older Redis versions)
+    fn connect_simple(redis_address: RedisAddress) -> anyhow::Result<Self> {
+        // connect to redis server
+        let stream = TcpStream::connect(redis_address.address())?;
+
+        let mut client = Self {
+            buffer: BytesBuffer::new(BUFFER_SIZE),
+            xstream: XTcpStream(stream),
+        };
+
+        // Try to authenticate if password is provided
+        let hello = redis_address.hello_info();
+        if hello.has_password() {
+            let auth_cmd = if let Some(username) = hello.username() {
+                // AUTH username password (Redis 6+)
+                RespType::create_from_command_line(&format!("AUTH {} {}", username, hello.password().unwrap()))
+            } else {
+                // AUTH password (Redis < 6)
+                RespType::create_from_command_line(&format!("AUTH {}", hello.password().unwrap()))
+            };
+            
+            client.write_command(auth_cmd)?;
+            let result = client.read_resp()?;
+            if result.is_err_type() {
+                eprintln!("Authentication failed: {}", result);
+                return Err(anyhow!("Authentication failed"));
+            }
+        }
+
+        // Send PING to test connection
+        let ping_cmd = RespType::create_from_command_line("PING");
+        client.write_command(ping_cmd)?;
+        let result = client.read_resp()?;
+        
+        if result.is_err_type() {
+            eprintln!("Connection test failed: {}", result);
+            return Err(anyhow!("Connection failed"));
+        } else {
+            println!("Connected successfully!");
+            println!("{}", result);
         }
 
         Ok(client)
@@ -106,5 +159,15 @@ impl RedisClient {
         self.xstream.read(&mut self.buffer)?;
         // decode response
         Ok(RespType::decode(&mut self.buffer))
+    }
+
+    pub fn try_clone(&self) -> anyhow::Result<Self> {
+        // Try to clone the TCP stream
+        let cloned_stream = self.xstream.0.try_clone()?;
+        
+        Ok(Self {
+            buffer: BytesBuffer::new(BUFFER_SIZE),
+            xstream: XTcpStream(cloned_stream),
+        })
     }
 }

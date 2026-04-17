@@ -53,7 +53,72 @@ impl Hello {
         }
     }
 
+    pub fn has_password(&self) -> bool {
+        self.password.is_some()
+    }
+
+    pub fn password(&self) -> Option<&String> {
+        self.password.as_ref()
+    }
+
+    pub fn username(&self) -> Option<&String> {
+        self.username.as_ref()
+    }
+
+    pub fn client_name(&self) -> Option<&String> {
+        Some(&self.client_name)
+    }
+
+    /// Helper function to encode a bulk string in RESP format
+    fn encode_bulk_string(s: &str) -> Vec<u8> {
+        let mut result = vec![];
+        result.push(b'$');
+        result.extend_from_slice(s.len().to_string().as_bytes());
+        result.extend_from_slice(b"\r\n");
+        result.extend_from_slice(s.as_bytes());
+        result.extend_from_slice(b"\r\n");
+        result
+    }
+
+    /// Encode HELLO command in RESP array format
     pub fn encode(&self) -> Vec<u8> {
+        // Build HELLO command in RESP array format
+        // Format: *<count>\r\n$<len>\r\nHELLO\r\n$<len>\r\n3\r\n...
+        
+        let mut parts = vec![];
+        
+        // HELLO command
+        parts.push(Self::encode_bulk_string("HELLO"));
+        
+        // Protocol version
+        parts.push(Self::encode_bulk_string(ProtoVer::newest_ver().str_ver()));
+        
+        // AUTH username password (if password is provided)
+        if self.password.is_some() {
+            parts.push(Self::encode_bulk_string("AUTH"));
+            parts.push(Self::encode_bulk_string(self.username.as_ref().unwrap_or(&"default".to_string())));
+            parts.push(Self::encode_bulk_string(self.password.as_ref().unwrap()));
+        }
+        
+        // SETNAME client_name
+        parts.push(Self::encode_bulk_string("SETNAME"));
+        parts.push(Self::encode_bulk_string(&self.client_name));
+        
+        // Build the array
+        let mut result = vec![];
+        result.push(b'*');
+        result.extend_from_slice(parts.len().to_string().as_bytes());
+        result.extend_from_slice(b"\r\n");
+        
+        for part in parts {
+            result.extend_from_slice(&part);
+        }
+        
+        result
+    }
+
+    /// Encode HELLO command in inline format (compatible with older Redis versions)
+    pub fn encode_inline(&self) -> Vec<u8> {
         // hello proto_ver [auth username password setname client_name]
         let mut hello_v = vec![];
 
@@ -127,10 +192,10 @@ impl RespType {
     }
 
     /// build a RespType from command line input
-    /// like `set hello world` => Array([SimpleString("set"), BulkString("hello"), BulkString("world")])
+    /// like `set hello world` => Array([BulkString("set"), BulkString("hello"), BulkString("world")])
     pub fn create_from_command_line(value: &str) -> RespType {
         let arrays: Vec<RespType> = value
-            .split(" ")
+            .split_whitespace()
             .map(|t| RespType::BulkStrings(BulkString::new(t.to_string())))
             .collect();
 
@@ -150,6 +215,34 @@ impl RespType {
         match self {
             RespType::SimpleErrors(_) | RespType::BulkErrors(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn as_map(&self) -> Option<&Map> {
+        match self {
+            RespType::Maps(map) => Some(map),
+            _ => None,
+        }
+    }
+
+    pub fn as_bulk_string(&self) -> Option<&BulkString> {
+        match self {
+            RespType::BulkStrings(bs) => Some(bs),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self) -> Option<&Array> {
+        match self {
+            RespType::Arrays(arr) => Some(arr),
+            _ => None,
+        }
+    }
+
+    pub fn as_boolean(&self) -> Option<&Boolean> {
+        match self {
+            RespType::Booleans(b) => Some(b),
+            _ => None,
         }
     }
 }
@@ -210,6 +303,10 @@ impl SimpleString {
             value: String::from_utf8_lossy(string_bytes).to_string(),
         }
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 /// $<length>\r\n<data>\r\n
@@ -247,6 +344,10 @@ impl BulkString {
         buff.put_u8_slice(self.value.as_bytes());
         buff.put_u8_slice(&TERMINATOR[..]);
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 pub struct Integer {
@@ -280,6 +381,10 @@ impl Boolean {
 
         let value = if b't' == b_byte { true } else { false };
         Boolean { value }
+    }
+
+    pub fn value(&self) -> bool {
+        self.value
     }
 }
 
@@ -328,6 +433,16 @@ impl Null {
 }
 
 pub struct OrderKey(usize, RespType);
+
+impl OrderKey {
+    pub fn value(&self) -> &RespType {
+        &self.1
+    }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
 
 impl PartialOrd for OrderKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -378,6 +493,14 @@ impl Map {
         }
 
         Map { map }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&OrderKey, &RespType)> {
+        self.map.iter()
+    }
+
+    pub fn get(&self, key: &OrderKey) -> Option<&RespType> {
+        self.map.get(key)
     }
 }
 
@@ -438,6 +561,18 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RespType> {
+        self.value.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
     }
 }
 
