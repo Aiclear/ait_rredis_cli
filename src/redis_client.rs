@@ -107,4 +107,14 @@ impl RedisClient {
         // decode response
         Ok(RespType::decode(&mut self.buffer))
     }
+
+    pub fn try_clone(&self) -> anyhow::Result<Self> {
+        // Try to clone the TCP stream
+        let cloned_stream = self.xstream.0.try_clone()?;
+        
+        Ok(Self {
+            buffer: BytesBuffer::new(BUFFER_SIZE),
+            xstream: XTcpStream(cloned_stream),
+        })
+    }
 }

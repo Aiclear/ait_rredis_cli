@@ -152,6 +152,34 @@ impl RespType {
             _ => false,
         }
     }
+
+    pub fn as_map(&self) -> Option<&Map> {
+        match self {
+            RespType::Maps(map) => Some(map),
+            _ => None,
+        }
+    }
+
+    pub fn as_bulk_string(&self) -> Option<&BulkString> {
+        match self {
+            RespType::BulkStrings(bs) => Some(bs),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self) -> Option<&Array> {
+        match self {
+            RespType::Arrays(arr) => Some(arr),
+            _ => None,
+        }
+    }
+
+    pub fn as_boolean(&self) -> Option<&Boolean> {
+        match self {
+            RespType::Booleans(b) => Some(b),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for RespType {
@@ -210,6 +238,10 @@ impl SimpleString {
             value: String::from_utf8_lossy(string_bytes).to_string(),
         }
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 /// $<length>\r\n<data>\r\n
@@ -247,6 +279,10 @@ impl BulkString {
         buff.put_u8_slice(self.value.as_bytes());
         buff.put_u8_slice(&TERMINATOR[..]);
     }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 pub struct Integer {
@@ -280,6 +316,10 @@ impl Boolean {
 
         let value = if b't' == b_byte { true } else { false };
         Boolean { value }
+    }
+
+    pub fn value(&self) -> bool {
+        self.value
     }
 }
 
@@ -328,6 +368,16 @@ impl Null {
 }
 
 pub struct OrderKey(usize, RespType);
+
+impl OrderKey {
+    pub fn value(&self) -> &RespType {
+        &self.1
+    }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
+}
 
 impl PartialOrd for OrderKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -378,6 +428,14 @@ impl Map {
         }
 
         Map { map }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&OrderKey, &RespType)> {
+        self.map.iter()
+    }
+
+    pub fn get(&self, key: &OrderKey) -> Option<&RespType> {
+        self.map.get(key)
     }
 }
 
@@ -438,6 +496,18 @@ impl Array {
         for item in &self.value {
             item.encode(buff);
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RespType> {
+        self.value.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.value.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
     }
 }
 
